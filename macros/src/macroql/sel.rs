@@ -175,15 +175,9 @@ impl Sel {
                     #mod_defs
                 }
             }
-            Self::Inline { typ_, flds } => {
-                let typ_name = typ_.name.as_ref().expect(INLINE_NO_TYPE_ERR);
-                let mod_name = ident_to_case(typ_name, Case::Snake);
+            Self::Inline { flds, .. } => {
                 let mod_defs = flds.iter().filter(|e| e.is_object()).map(|e| e.fmt_rs());
-                quote! {
-                    pub mod #mod_name {
-                        #(#mod_defs)*
-                    }
-                }
+                quote!(#(#mod_defs)*)
             }
         }
     }

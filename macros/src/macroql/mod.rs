@@ -22,6 +22,7 @@ pub fn macroql(input: TokenStream) -> TokenStream {
         vars,
         sels,
     } = parse_macro_input!(input);
+    let name = ident_to_case(&name, Case::Snake);
     let vars = Var {
         name: format_ident!("vars"),
         typ_: Type::default(),
@@ -39,9 +40,29 @@ pub fn macroql(input: TokenStream) -> TokenStream {
     let sels_fmt_rs = sels.fmt_rs();
     let query_str = format!("{oper} {name}{vars_fmt_gq}{sels_fmt_gq}");
     quote! {
-        impl Client {
-            #visi async fn #name(&self, vars: #name::Vars) -> anyhow::Result<#name::Sels> {
-                self.req(#query_str, vars).await
+        #visi async fn #name(client: &reqwest::Client, vars: #name::Vars) -> anyhow::Result<#name::Sels> {
+            #[derive(serde::Serialize)]
+            struct Request {
+                query: &'static str,
+                variables: #name::Vars,
+            }
+            #[derive(serde::Deserialize)]
+            struct Success {
+                data: #name::Sels,
+            }
+            #[derive(serde::Deserialize)]
+            struct Failure {
+                errors: Vec<Error>,
+            }
+            #[derive(serde::Deserialize)]
+            struct Error {
+                message: String,
+            }
+            let res = client.post("https://page.kakao.com/graphql").json(&Request { query: #query_str, variables: vars }).send().await?;
+            if res.status().is_success() {
+                Ok(res.json::<Success>().await?.data)
+            } else {
+                Err(anyhow::anyhow!("{}", res.json::<Failure>().await?.errors.into_iter().map(|e| e.message).collect::<Vec<_>>().join(", ")))
             }
         }
 

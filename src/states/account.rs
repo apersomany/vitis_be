@@ -1,7 +1,9 @@
 use std::sync::{Arc, Mutex, OnceLock};
 
 use axum::http::HeaderMap;
+use chrono::NaiveDateTime;
 use cookie::Cookie;
+use dashmap::DashMap;
 use rand::random;
 use reqwest::{cookie::CookieStore, header::HeaderValue, Client, Proxy, Url};
 use serde::{Deserialize, Serialize};
@@ -12,7 +14,8 @@ pub struct Account {
     #[serde(default = "generate_agent")]
     agent: String,
     proxy: Option<String>,
-    pub cash: i32,
+    pub gotchas: DashMap<i32, NaiveDateTime>,
+    pub balance: i32,
     #[serde(skip)]
     client: OnceLock<Client>,
 }
@@ -53,10 +56,7 @@ impl Account {
     pub fn client(&self) -> &Client {
         self.client.get_or_init(|| {
             let mut headers = HeaderMap::new();
-            headers.insert(
-                "referer",
-                HeaderValue::from_str("https://page.kakao.com").unwrap(),
-            );
+            headers.insert("referer", "https://page.kakao.com".parse().unwrap());
             let mut builder = Client::builder()
                 .cookie_provider(self.token.clone())
                 .cookie_store(true)

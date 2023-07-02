@@ -59,8 +59,8 @@ macroql! {
 }
 
 pub async fn search(
-    Query(query): Query<SearchReq>,
     State(state): State<Arc<States>>,
+    Query(query): Query<SearchReq>,
 ) -> Result<Json<SearchRes>> {
     let sels: search_keyword::Sels = search_keyword(
         &state.client,

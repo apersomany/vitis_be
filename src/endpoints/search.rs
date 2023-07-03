@@ -9,14 +9,15 @@ use vitis_be_macros::macroql;
 
 use crate::states::States;
 
-use self::search_keyword::{sels::search_keyword::List, vars::SearchKeywordInput, Vars};
+use self::search_keyword::{vars::SearchKeywordInput, Vars};
 
 use super::{get_param, Result};
 
 #[derive(Deserialize)]
 pub struct SearchReq {
     keyword: String,
-    page: Option<i32>,
+    #[serde(default)]
+    page: i32,
 }
 
 #[derive(Serialize)]
@@ -27,7 +28,7 @@ pub struct SearchRes {
 
 #[derive(Serialize)]
 pub struct Series {
-    series_id: i32,
+    series_id: i64,
     cover: String,
     title: String,
     row_1: String,
@@ -35,7 +36,7 @@ pub struct Series {
 }
 
 macroql! {
-    query searchKeyword (
+    query search_keyword (
         searchKeywordInput: SearchKeywordInput {
             keyword: String,
             page: Int
@@ -43,7 +44,6 @@ macroql! {
     ) {
         searchKeyword(searchKeywordInput) {
             list: [] {
-                ... NormalListViewItem {
                     thumbnail: String,
                     row1: String,
                     row2: [String],
@@ -51,7 +51,6 @@ macroql! {
                         metaList: [String]
                     },
                     scheme: String
-                }
             },
             isEnd: Boolean
         }
@@ -62,34 +61,25 @@ pub async fn search(
     State(state): State<Arc<States>>,
     Query(query): Query<SearchReq>,
 ) -> Result<Json<SearchRes>> {
-    let sels: search_keyword::Sels = search_keyword(
+    let sels = search_keyword(
         &state.client,
         Vars {
             search_keyword_input: SearchKeywordInput {
                 keyword: query.keyword,
-                page: query.page.unwrap_or(0),
+                page: query.page,
             },
         },
     )
     .await?;
     let mut data = Vec::new();
     for item in sels.search_keyword.list {
-        match item {
-            List::NormalListViewItem {
-                thumbnail,
-                row_1,
-                row_2,
-                row_3,
-                scheme,
-            } => data.push(Series {
-                series_id: get_param(&scheme, "series_id")?.parse()?,
-                cover: get_param(&thumbnail, "kid")?,
-                title: row_1,
-                row_1: row_2.join("·"),
-                row_2: row_3.meta_list.join("·"),
-            }),
-            List::Unknown => {}
-        }
+        data.push(Series {
+            series_id: get_param(&item.scheme, "series_id")?.parse()?,
+            cover: get_param(&item.thumbnail, "kid")?,
+            title: item.row_1,
+            row_1: item.row_2.join(" · "),
+            row_2: item.row_3.meta_list.join(" · "),
+        });
     }
     let more = !sels.search_keyword.is_end;
     Ok(Json(SearchRes { data, more }))

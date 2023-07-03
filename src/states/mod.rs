@@ -1,7 +1,7 @@
 use std::{fs::File, sync::Arc};
 
 use anyhow::Result;
-use axum::http::{HeaderMap, HeaderValue};
+use axum::http::HeaderMap;
 use dashmap::DashMap;
 use log::{info, warn};
 use reqwest::Client;

@@ -59,6 +59,8 @@ pub fn macroql(input: TokenStream) -> TokenStream {
                 message: String,
             }
             let res = client.post("https://page.kakao.com/graphql").json(&Request { query: #query_str, variables: vars }).send().await?;
+            // println!("{}", res.text().await?);
+            // todo!()
             if res.status().is_success() {
                 Ok(res.json::<Success>().await?.data)
             } else {

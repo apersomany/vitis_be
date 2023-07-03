@@ -56,6 +56,7 @@ impl Type {
         let name = if let Some(name) = &self.name {
             match name.to_string().as_str() {
                 "Int" => Ident::new("i32", name.span()),
+                "Long" => Ident::new("i64", name.span()),
                 "Float" => Ident::new("f64", name.span()),
                 "Boolean" => Ident::new("bool", name.span()),
                 other => Ident::new(other, name.span()),
@@ -80,7 +81,7 @@ impl Type {
     pub fn is_object(&self) -> bool {
         if let Some(name) = &self.name {
             match name.to_string().as_str() {
-                "Int" | "Float" | "Boolean" | "String" => false,
+                "Int" | "Long" | "Float" | "Boolean" | "String" => false,
                 _ => true,
             }
         } else {

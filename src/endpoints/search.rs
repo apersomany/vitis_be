@@ -7,11 +7,11 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use vitis_be_macros::macroql;
 
-use crate::states::States;
+use crate::{states::States, util::get_param};
 
 use self::search_keyword::{vars::SearchKeywordInput, Vars};
 
-use super::{get_param, Result};
+use super::Result;
 
 #[derive(Deserialize)]
 pub struct SearchReq {
@@ -22,7 +22,7 @@ pub struct SearchReq {
 
 #[derive(Serialize)]
 pub struct SearchRes {
-    data: Vec<Series>,
+    list: Vec<Series>,
     more: bool,
 }
 
@@ -71,9 +71,9 @@ pub async fn search(
         },
     )
     .await?;
-    let mut data = Vec::new();
+    let mut list = Vec::new();
     for item in sels.search_keyword.list {
-        data.push(Series {
+        list.push(Series {
             series_id: get_param(&item.scheme, "series_id")?.parse()?,
             cover: get_param(&item.thumbnail, "kid")?,
             title: item.row_1,
@@ -82,5 +82,5 @@ pub async fn search(
         });
     }
     let more = !sels.search_keyword.is_end;
-    Ok(Json(SearchRes { data, more }))
+    Ok(Json(SearchRes { list, more }))
 }

@@ -17,7 +17,7 @@ features = ["serde"]
 
 [dependencies.tokio]
 version = "1.29"
-features = ["rt-multi-thread", "macros"]
+features = ["rt-multi-thread", "macros", "signal"]
 
 [dependencies.serde]
 version = "1.0"

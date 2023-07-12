@@ -32,7 +32,11 @@ impl Var {
                 .flds
                 .iter()
                 .map(|e| {
-                    let name = &e.name;
+                    let name = if e.name.to_string() == "typ_" {
+                        Ident::new("type", e.name.span())
+                    } else {
+                        e.name.clone()
+                    };
                     let typ_ = e.typ_.fmt_gq();
                     format!("${name}: {typ_}")
                 })
@@ -54,9 +58,17 @@ impl Var {
             .filter(|e| e.typ_.is_object())
             .map(|e| e.fmt_rs());
         let fields = self.flds.iter().map(|e| {
-            let old_name = &e.name;
-            let new_name = ident_to_case(old_name, Case::Snake);
-            let typ_name = e.typ_.fmt_rs(old_name, &self.name);
+            let old_name = if e.name.to_string() == "typ_" {
+                Ident::new("type", e.name.span())
+            } else {
+                e.name.clone()
+            };
+            let new_name = if old_name.to_string() == "type" {
+                Ident::new("typ_", old_name.span())
+            } else {
+                ident_to_case(&old_name, Case::Snake)
+            };
+            let typ_name = e.typ_.fmt_rs(&old_name, &self.name);
             let old_name = old_name.to_string();
             quote!(#[serde(rename = #old_name)] pub #new_name: #typ_name)
         });

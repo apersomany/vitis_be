@@ -7,9 +7,9 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use vitis_be_macros::macroql;
 
-use crate::states::States;
+use crate::{states::States, util::get_param};
 
-use super::{get_param, Result};
+use super::Result;
 
 #[derive(Deserialize)]
 pub struct SeriesReq {
@@ -40,7 +40,7 @@ impl ToString for Sort {
 
 #[derive(Serialize)]
 pub struct SeriesRes {
-    data: Option<Series>,
+    meta: Option<Series>,
     list: Vec<Single>,
     more: bool,
 }
@@ -159,7 +159,7 @@ pub async fn series(
         )
         .await?;
         Ok(Json(SeriesRes {
-            data: Some(Series {
+            meta: Some(Series {
                 cover: get_param(&sels.content_home_overview.content.thumbnail, "kid")?,
                 title: sels.content_home_overview.content.title,
                 pub_period: sels.content_home_overview.content.pub_period,
@@ -198,7 +198,7 @@ pub async fn series(
         )
         .await?;
         Ok(Json(SeriesRes {
-            data: None,
+            meta: None,
             list: list!(sels),
             more: sels.content_home_product_list.page_info.has_next_page,
         }))

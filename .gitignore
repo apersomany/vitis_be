@@ -1,1 +1,8 @@
 /target
+*lock*
+accounts.json
+serieses.json
+config.json
+accounts.json.old
+serieses.json.old
+config.json.old

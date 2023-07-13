@@ -151,7 +151,7 @@ pub async fn series(
     }
     if query.page == 0 {
         let sels = series_full(
-            &state.client,
+            state.client.clone(),
             series_full::Vars {
                 sort_type: query.sort.to_string(),
                 series_id: query.series_id,
@@ -189,7 +189,7 @@ pub async fn series(
         }))
     } else {
         let sels = single_list(
-            &state.client,
+            state.client.clone(),
             single_list::Vars {
                 sort_type: query.sort.to_string(),
                 series_id: query.series_id,

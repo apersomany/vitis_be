@@ -1,15 +1,18 @@
-use std::sync::{Arc, Mutex, OnceLock};
+use std::{
+    sync::{Arc, Mutex, OnceLock},
+    time::Duration,
+};
 
 use anyhow::Result;
 use axum::http::HeaderMap;
-use chrono::NaiveDateTime;
 use cookie::Cookie;
 use rand::random;
 use reqwest::{cookie::CookieStore, header::HeaderValue, Client, Proxy, Url};
 use serde::{Deserialize, Serialize};
+use tokio::time::sleep;
 use vitis_be_macros::macroql;
 
-use crate::util::get_param;
+use crate::util::{get_param, iso};
 
 use self::{
     draw_gotcha::vars::DrawGotchaInput, gotchas::vars::MyNewsListInput,
@@ -21,9 +24,11 @@ use super::States;
 #[derive(Serialize, Deserialize)]
 pub struct Account {
     #[serde(default)]
-    pub last_gotcha_opened: NaiveDateTime,
+    pub last_token_refresh: i64,
     #[serde(default)]
-    pub balance: i32,
+    pub last_gotcha_opened: i64,
+    #[serde(default)]
+    pub balance: i64,
     token: Arc<Token>,
     #[serde(default = "generate_agent")]
     agent: String,
@@ -60,14 +65,14 @@ impl CookieStore for Token {
 }
 
 pub fn generate_agent() -> String {
-    format!("kakaopage/{:16x}", random::<u64>())
+    format!("kakaopage/{:016x}", random::<u64>())
 }
 
 macroql! {
     query balance {
         userAndCash {
             cash {
-                remainCash: Int
+                remainCash: Long
             }
         },
     }
@@ -121,8 +126,10 @@ macroql! {
             typ_: String
         }
     ) {
-        isReceived: Boolean,
-        ticketCount: Int,
+        receiveTicketFree(input) {
+            isReceived: Boolean,
+            ticketCount: Long
+        }
     }
 }
 
@@ -144,20 +151,25 @@ impl Account {
             .clone()
     }
 
-    pub async fn refresh_token(&self) -> Result<()> {
-        self.client().head("https://page.kakao.com").send().await?;
+    pub async fn refresh_token(states: &States, key: i64) -> Result<()> {
+        states
+            .get_acc(key)?
+            .client()
+            .head("https://page.kakao.com")
+            .send()
+            .await?;
         Ok(())
     }
 
-    pub async fn check_balance(states: &States, key: i32) -> Result<()> {
-        let sels = balance(&states.get_account(key)?.client(), balance::Vars {}).await?;
-        states.get_account(key)?.balance = sels.user_and_cash.cash.remain_cash;
+    pub async fn check_balance(states: &States, key: i64) -> Result<()> {
+        let sels = balance(states.get_acc(key)?.client(), balance::Vars {}).await?;
+        states.get_acc(key)?.balance = sels.user_and_cash.cash.remain_cash;
         Ok(())
     }
 
-    pub async fn check_gotchas(states: &States, key: i32) -> Result<()> {
+    pub async fn check_gotchas(states: &States, key: i64) -> Result<()> {
         let sels = gotchas(
-            &states.get_account(key)?.client(),
+            states.get_acc(key)?.client(),
             gotchas::Vars {
                 my_news_list_input: MyNewsListInput {
                     tab: "ALL".to_string(),
@@ -166,40 +178,59 @@ impl Account {
             },
         )
         .await?;
-        println!("{:#?}", sels);
-        let mut max_date = NaiveDateTime::default();
+        let mut max_date = 0;
         for news in sels.my_news_list.news {
-            let date = news.date.parse::<NaiveDateTime>()?;
-            if news.log_name == "Award" && date > states.get_account(key)?.last_gotcha_opened {
-                // let gotcha_id = get_param(&news.scheme, "gotcha_id")?;
-                // draw_gotcha(
-                //     &states.get_account(key)?.client(),
-                //     draw_gotcha::Vars {
-                //         input: DrawGotchaInput { gotcha_id },
-                //     },
-                // )
-                // .await?;
-                // max_date = max_date.max(date);
+            if news.log_name == "Award" {
+                let date = iso(&news.date)?;
+                if date > states.get_acc(key)?.last_gotcha_opened {
+                    let gotcha_id = if let Ok(scheme) = get_param(
+                        &urlencoding::decode(&news.scheme)?,
+                        "open_enc_url_with_auth",
+                    ) {
+                        get_param(&urlencoding::decode(&scheme)?, "id")?
+                    } else {
+                        get_param(&urlencoding::decode(&news.scheme)?, "gacha_uid")?
+                    };
+                    draw_gotcha(
+                        states.get_acc(key)?.client(),
+                        draw_gotcha::Vars {
+                            input: DrawGotchaInput { gotcha_id },
+                        },
+                    )
+                    .await?;
+                    max_date = max_date.max(date);
+                    sleep(Duration::from_millis(200 + random::<u64>() % 200)).await;
+                }
             }
         }
-        states.get_account(key)?.last_gotcha_opened = max_date;
+        if max_date > 0 {
+            states.get_acc(key)?.last_gotcha_opened = max_date;
+        }
         Ok(())
     }
 
-    pub async fn check_tickets(states: &States, key: i32) -> Result<()> {
-        let sels = tickets(&states.get_account(key)?.client(), tickets::Vars {}).await?;
+    pub async fn check_tickets(states: &States, key: i64) -> Result<()> {
+        let sels = tickets(states.get_acc(key)?.client(), tickets::Vars {}).await?;
         for gift in sels.today_gift_list.list {
-            // let sels = recv_ticket(
-            //     &states.get_account(key)?.client(),
-            //     recv_ticket::Vars {
-            //         input: TicketFreeMutationInput {
-            //             typ_: "TodayGift".to_string(),
-            //             ticket_uid: gift.ticket_uid,
-            //         },
-            //     },
-            // )
-            // .await?;
-            // println!("{}")
+            if !gift.is_received {
+                let _ = recv_ticket(
+                    states.get_acc(key)?.client(),
+                    recv_ticket::Vars {
+                        input: TicketFreeMutationInput {
+                            typ_: "TodayGift".to_string(),
+                            ticket_uid: gift.ticket_uid,
+                        },
+                    },
+                )
+                .await?;
+                // disabled as it would complicate the check first time free ticket logic
+                // states
+                //     .get_srs(get_param(&gift.scheme, "series_id")?.parse()?)?
+                //     .get_tkt(key)?
+                //     .permanent
+                //     .add_assign(sels.receive_ticket_free.ticket_count);
+                sleep(Duration::from_millis(200 + random::<u64>() % 200)).await;
+            }
         }
         Ok(())
     }

@@ -62,7 +62,7 @@ pub async fn search(
     Query(query): Query<SearchReq>,
 ) -> Result<Json<SearchRes>> {
     let sels = search_keyword(
-        &state.client,
+        state.client.clone(),
         Vars {
             search_keyword_input: SearchKeywordInput {
                 keyword: query.keyword,

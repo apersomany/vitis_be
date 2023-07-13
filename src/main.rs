@@ -7,8 +7,9 @@ use axum::{
     routing::get,
     Router, Server,
 };
-use endpoints::{resource::resource, search::search, series::series};
+use endpoints::{resource::resource, search::search, series::series, single::single};
 use env_logger::{Env, DEFAULT_FILTER_ENV};
+use log::info;
 use states::States;
 
 pub mod endpoints;
@@ -25,6 +26,7 @@ async fn cors(request: Request<Body>, next: Next<Body>) -> Response {
 
 async fn tsig() {
     tokio::signal::ctrl_c().await.unwrap();
+    info!("stopping")
 }
 
 #[tokio::main]
@@ -35,6 +37,7 @@ async fn main() -> Result<()> {
         .route("/:resty/resource", get(resource))
         .route("/search", get(search))
         .route("/series", get(series))
+        .route("/single", get(single))
         .layer(middleware::from_fn(cors))
         .with_state::<()>(states.clone());
     states.start_timers();

@@ -32,10 +32,9 @@ impl Var {
                 .flds
                 .iter()
                 .map(|e| {
-                    let name = if e.name.to_string() == "typ_" {
-                        Ident::new("type", e.name.span())
-                    } else {
-                        e.name.clone()
+                    let name = match e.name.to_string().as_str() {
+                        "typ_" => Ident::new("type", e.name.span()),
+                        _ => e.name.clone(),
                     };
                     let typ_ = e.typ_.fmt_gq();
                     format!("${name}: {typ_}")
@@ -68,7 +67,14 @@ impl Var {
             } else {
                 ident_to_case(&old_name, Case::Snake)
             };
-            let typ_name = e.typ_.fmt_rs(&old_name, &self.name);
+            let typ_name = if e.typ_.name.clone().map(|e| e.to_string())
+                == Some("QueryFromPage".to_string())
+            {
+                quote!(String)
+            } else {
+                let typ_name = e.typ_.fmt_rs(&old_name, &self.name);
+                quote!(#typ_name)
+            };
             let old_name = old_name.to_string();
             quote!(#[serde(rename = #old_name)] pub #new_name: #typ_name)
         });

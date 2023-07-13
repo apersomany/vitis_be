@@ -40,7 +40,7 @@ pub fn macroql(input: TokenStream) -> TokenStream {
     let sels_fmt_rs = sels.fmt_rs();
     let query_str = format!("{oper} {name}{vars_fmt_gq}{sels_fmt_gq}");
     quote! {
-        #visi async fn #name(client: &reqwest::Client, vars: #name::Vars) -> anyhow::Result<#name::Sels> {
+        #visi async fn #name(client: reqwest::Client, vars: #name::Vars) -> anyhow::Result<#name::Sels> {
             #[derive(serde::Serialize)]
             struct Request {
                 query: &'static str,
@@ -58,13 +58,11 @@ pub fn macroql(input: TokenStream) -> TokenStream {
             struct Error {
                 message: String,
             }
-            let res = client.post("https://page.kakao.com/graphql").json(&Request { query: #query_str, variables: vars }).send().await?;
-            // println!("{}", res.text().await?);
-            // todo!()
-            if res.status().is_success() {
-                Ok(res.json::<Success>().await?.data)
+            let res = client.post("https://page.kakao.com/graphql").json(&Request { query: #query_str, variables: vars }).send().await?.json::<serde_json::Value>().await?;
+            if res.get("errors").is_some() {
+                Err(anyhow::anyhow!("{}", serde_json::from_value::<Failure>(res)?.errors.into_iter().map(|e| e.message).collect::<Vec<_>>().join(", ")))
             } else {
-                Err(anyhow::anyhow!("{}", res.json::<Failure>().await?.errors.into_iter().map(|e| e.message).collect::<Vec<_>>().join(", ")))
+                Ok(serde_json::from_value::<Success>(res)?.data)
             }
         }
 

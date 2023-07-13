@@ -1,33 +1,50 @@
-use anyhow::Result;
-use chrono::NaiveDateTime;
+use anyhow::{Context, Result};
 use dashmap::{mapref::one::RefMut, DashMap};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct Series {
-    pub single_map: DashMap<i32, Single>,
-    pub ticket_map: DashMap<i32, Ticket>,
+    pub single_map: DashMap<i64, Single>,
+    pub ticket_map: DashMap<i64, Ticket>,
 }
 
 impl Series {
-    pub fn get_ticket(&self, key: i32) -> Result<RefMut<i32, Ticket>> {
-        if let Some(ticket) = self.ticket_map.get_mut(&key) {
-            Ok(ticket)
-        } else {
-            self.ticket_map.insert(key, Ticket::default());
-            Ok(self.ticket_map.get_mut(&key).unwrap())
-        }
+    pub fn get_tkt(&self, key: i64) -> Result<RefMut<i64, Ticket>> {
+        self.ticket_map
+            .get_mut(&key)
+            .with_context(move || format!("account {key} does not exist for this series"))
     }
 }
 
-#[derive(Serialize, Deserialize)]
-pub enum Single {
-    KakaoHTML(Vec<Vec<String>>),
-    ImageList(Vec<String>),
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Single {
+    pub viewer: Viewer,
+    pub prev: Option<i64>,
+    pub next: Option<i64>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(tag = "type", content = "data")]
+pub enum Viewer {
+    ImageList(Vec<Image>),
+    KakaoHTML(Vec<KHTML>),
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Image {
+    pub size: i64,
+    pub kid: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct KHTML {
+    pub chapter_id: i64,
+    pub content_id: i64,
+    pub kid: String,
 }
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct Ticket {
-    pub wait_free: NaiveDateTime,
-    pub permanent: i32,
+    pub wait_free: i64,
+    pub permanent: i64,
 }

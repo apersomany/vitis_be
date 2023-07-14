@@ -1,4 +1,4 @@
-use std::{collections::HashSet, ops::SubAssign, sync::Arc};
+use std::{collections::HashSet, ops::SubAssign, sync::Arc, time::Duration};
 
 use anyhow::{anyhow, Error};
 use axum::{
@@ -144,6 +144,9 @@ async fn get_single(
             productId: Long
         ) {
             viewerInfo(seriesId, productId) {
+                item {
+                    title: String
+                },
                 viewerData {
                     ... ImageViewerData {
                         imageDownloadData {
@@ -180,6 +183,7 @@ async fn get_single(
     )
     .await?;
     let single = Single {
+        title: sels.viewer_info.item.title,
         viewer: match sels.viewer_info.viewer_data {
             ViewerData::ImageViewerData {
                 image_download_data,
@@ -221,12 +225,12 @@ async fn finder_job(
     updated: HashSet<i64>,
     series_id: i64,
     single_id: i64,
-) -> Result<()> {
+) -> bool {
     let find_channel = state.find_map.get(&series_id).map(|e| e.resubscribe());
-    if let Some(mut find_channel) = find_channel {
-        find_channel.recv().await?;
+    if let Some(find_channel) = find_channel {
+        find_channel
     } else {
-        let (find_tx, mut find_rx) = broadcast::channel(1024);
+        let (find_tx, find_rx) = broadcast::channel(1024);
         spawn_solo(async move {
             state.find_map.insert(series_id, find_tx.subscribe());
             let all_accounts = state
@@ -235,7 +239,6 @@ async fn finder_job(
                 .map(|e| *e.key())
                 .collect::<Vec<i64>>();
             for account_id in all_accounts {
-                println!("{account_id}");
                 if !updated.contains(&account_id) {
                     if !state
                         .get_srs(series_id)?
@@ -261,7 +264,7 @@ async fn finder_job(
                         + sels.content_my_ticket.ticket_own_count
                         - if now() > wait_free { 1 } else { 0 };
                     if permanent > 0 {
-                        find_tx.send(())?;
+                        find_tx.send(true)?;
                     }
                     let series = state.get_srs(series_id)?;
                     series.ticket_map.insert(account_id, Ticket::default());
@@ -270,12 +273,20 @@ async fn finder_job(
                     ticket.wait_free = wait_free;
                 }
             }
-            state.find_map.remove(&series_id);
+            spawn_solo(async move {
+                for _ in 0..3600 {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    find_tx.send(false).unwrap();
+                }
+                state.find_map.remove(&series_id);
+            });
             Ok::<(), Error>(())
         });
-        find_rx.recv().await?;
+        find_rx
     }
-    Ok(())
+    .recv()
+    .await
+    .is_ok()
 }
 
 pub async fn single(
@@ -357,7 +368,7 @@ pub async fn single(
                     )
                     .await?;
                     match sels.ready_to_use_ticket.process.as_str() {
-                        "ForceUseRentalTicket" => {
+                        "ForceUseRentalTicket" | "AskTicketChoice" => {
                             if let Some(available) = sels.ready_to_use_ticket.available {
                                 if let Some(ticket_type) = available.ticket_rental_type {
                                     use_ticket(
@@ -410,10 +421,12 @@ pub async fn single(
                     )
                     .await;
                 }
-                println!("{:#?}", updated);
                 if i == 0 {
-                    finder_job(state.clone(), updated, series_id, single_id).await?;
+                    if !finder_job(state.clone(), updated, series_id, single_id).await {
+                        Err(anyhow!("ticket finder job is on a cooldown"))?
+                    }
                 }
+                if i == 1 {}
             }
             Err(anyhow!("not enough tickets"))?
         }

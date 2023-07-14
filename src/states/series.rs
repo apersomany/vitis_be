@@ -18,6 +18,7 @@ impl Series {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Single {
+    pub title: String,
     pub viewer: Viewer,
     pub prev: Option<i64>,
     pub next: Option<i64>,

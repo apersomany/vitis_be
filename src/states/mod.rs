@@ -27,7 +27,7 @@ pub mod series;
 pub struct States {
     pub accounts: DashMap<i64, Account>,
     pub serieses: DashMap<i64, Series>,
-    pub find_map: DashMap<i64, Receiver<()>>,
+    pub find_map: DashMap<i64, Receiver<bool>>,
     pub config: Config,
     pub client: Client,
 }

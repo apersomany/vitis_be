@@ -61,7 +61,7 @@ macroql! {
         contentMyTicket(seriesId, includeWaitfree) {
             ticketOwnCount: Long,
             ticketRentalCount: Long,
-            waitfree {
+            waitfree: ? {
                 chargedAt: String
             }
         },
@@ -90,7 +90,7 @@ macroql! {
         contentMyTicket(seriesId, includeWaitfree) {
             ticketOwnCount: Long,
             ticketRentalCount: Long,
-            waitfree {
+            waitfree: ? {
                 chargedAt: String
             }
         }
@@ -225,9 +225,9 @@ async fn finder_job(
     updated: HashSet<i64>,
     series_id: i64,
     single_id: i64,
-) -> bool {
+) -> Result<bool> {
     let find_channel = state.find_map.get(&series_id).map(|e| e.resubscribe());
-    if let Some(find_channel) = find_channel {
+    let mut find_channel = if let Some(find_channel) = find_channel {
         find_channel
     } else {
         let (find_tx, find_rx) = broadcast::channel(1024);
@@ -259,7 +259,11 @@ async fn finder_job(
                         },
                     )
                     .await?;
-                    let wait_free = iso(&sels.content_my_ticket.waitfree.charged_at)?;
+                    let wait_free = if let Some(wait_free) = sels.content_my_ticket.waitfree {
+                        iso(&wait_free.charged_at)?
+                    } else {
+                        i64::MAX
+                    };
                     let permanent = sels.content_my_ticket.ticket_rental_count
                         + sels.content_my_ticket.ticket_own_count
                         - if now() > wait_free { 1 } else { 0 };
@@ -283,10 +287,8 @@ async fn finder_job(
             Ok::<(), Error>(())
         });
         find_rx
-    }
-    .recv()
-    .await
-    .is_ok()
+    };
+    Ok(find_channel.recv().await?)
 }
 
 pub async fn single(
@@ -403,7 +405,11 @@ pub async fn single(
                             Err(anyhow!("unknown process: \"{unknown}\""))?;
                         }
                     }
-                    let wait_free = iso(&sels.content_my_ticket.waitfree.charged_at)?;
+                    let wait_free = if let Some(wait_free) = sels.content_my_ticket.waitfree {
+                        iso(&wait_free.charged_at)?
+                    } else {
+                        i64::MAX
+                    };
                     let series = state.get_srs(series_id)?;
                     let mut ticket = series.get_tkt(account_id)?;
                     ticket.permanent = sels.content_my_ticket.ticket_rental_count
@@ -422,7 +428,7 @@ pub async fn single(
                     .await;
                 }
                 if i == 0 {
-                    if !finder_job(state.clone(), updated, series_id, single_id).await {
+                    if !finder_job(state.clone(), updated, series_id, single_id).await? {
                         Err(anyhow!("ticket finder job is on a cooldown"))?
                     }
                 }

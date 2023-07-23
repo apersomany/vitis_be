@@ -110,6 +110,7 @@ macroql! {
         sortType: String,
         seriesId: Long,
         after: String,
+        before: String
     ) {
         contentHomeProductList(sortType, seriesId, after) {
             pageInfo {
@@ -193,7 +194,8 @@ pub async fn series(
             single_list::Vars {
                 sort_type: query.sort.to_string(),
                 series_id: query.series_id,
-                after: (query.page * 25).to_string(),
+                after: (2u32.pow(query.page as u32) * 25).to_string(),
+                before: (2u32.pow(query.page as u32 + 1) * 25).to_string(),
             },
         )
         .await?;

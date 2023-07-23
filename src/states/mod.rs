@@ -1,5 +1,6 @@
 use std::{
     fs::{self, File},
+    io::{BufReader, BufWriter},
     sync::Arc,
     time::Duration,
 };
@@ -52,6 +53,7 @@ impl States {
         Ok(Arc::new(Self {
             accounts: if let Ok(reader) = File::open("accounts.json") {
                 info!("loading accounts");
+                let reader = BufReader::new(reader);
                 serde_json::from_reader(reader)?
             } else {
                 warn!("accounts.json not found, using default value");
@@ -59,6 +61,7 @@ impl States {
             },
             serieses: if let Ok(reader) = File::open("serieses.json") {
                 info!("loading serieses");
+                let reader = BufReader::new(reader);
                 serde_json::from_reader(reader)?
             } else {
                 warn!("serieses.json not found, using default value");
@@ -67,6 +70,7 @@ impl States {
             find_map: { DashMap::new() },
             config: if let Ok(reader) = File::open("config.json") {
                 info!("loading config");
+                let reader = BufReader::new(reader);
                 serde_json::from_reader(reader)?
             } else {
                 warn!("config.json not found, using default value");
@@ -87,18 +91,21 @@ impl States {
     pub fn save(&self) -> Result<()> {
         info!("saving accounts");
         let accounts_writer = File::create("accounts.json.new")?;
+        let accounts_writer = BufWriter::new(accounts_writer);
         serde_json::to_writer_pretty(accounts_writer, &self.accounts)?;
         let _ = fs::remove_file("accounts.json.old");
         let _ = fs::rename("accounts.json", "accounts.json.old");
         let _ = fs::rename("accounts.json.new", "accounts.json");
         info!("saving serieses");
         let serieses_writer = File::create("serieses.json.new")?;
+        let serieses_writer = BufWriter::new(serieses_writer);
         serde_json::to_writer_pretty(serieses_writer, &self.serieses)?;
         let _ = fs::remove_file("serieses.json.old");
         let _ = fs::rename("serieses.json", "serieses.json.old");
         let _ = fs::rename("serieses.json.new", "serieses.json");
         info!("saving config");
         let config_writer = File::create("config.json.new")?;
+        let config_writer = BufWriter::new(config_writer);
         serde_json::to_writer_pretty(config_writer, &self.config)?;
         let _ = fs::remove_file("config.json.old");
         let _ = fs::rename("config.json", "config.json.old");

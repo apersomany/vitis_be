@@ -110,9 +110,9 @@ macroql! {
         sortType: String,
         seriesId: Long,
         after: String,
-        before: String
+        last: Int
     ) {
-        contentHomeProductList(sortType, seriesId, after) {
+        contentHomeProductList(sortType, seriesId, after, last) {
             pageInfo {
                 hasNextPage: Boolean
             },
@@ -194,8 +194,9 @@ pub async fn series(
             single_list::Vars {
                 sort_type: query.sort.to_string(),
                 series_id: query.series_id,
-                after: (2u32.pow(query.page as u32) * 25).to_string(),
-                before: (2u32.pow(query.page as u32 + 1) * 25).to_string(),
+                // sums of arithmetic series ^^7
+                after: ((query.page + 1) * query.page / 2 * 25).to_string(),
+                last: (query.page + 1) * 25,
             },
         )
         .await?;

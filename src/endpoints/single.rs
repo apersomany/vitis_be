@@ -26,8 +26,6 @@ pub struct SingleReq {
     series_id: i64,
     single_id: i64,
     #[serde(default)]
-    wait_free: bool,
-    #[serde(default)]
     free: bool,
 }
 
@@ -291,6 +289,21 @@ async fn finder_job(
     Ok(find_channel.recv().await?)
 }
 
+macroql! {
+    query next_item (
+        viewerEndInput: ViewerEndInput {
+            productId: Long,
+            seriesId: Long
+        }
+    ) {
+        viewerEnd(viewerEndInput) {
+            nextItem {
+                productId: Long
+            }
+        }
+    }
+}
+
 pub async fn single(
     State(state): State<Arc<States>>,
     Query(query): Query<SingleReq>,
@@ -298,7 +311,6 @@ pub async fn single(
     let SingleReq {
         series_id,
         single_id,
-        wait_free,
         free,
     } = query;
     spawn_solo(async move {
@@ -308,38 +320,62 @@ pub async fn single(
             .get(&single_id)
             .map(|e| e.clone());
         if let Some(single) = single {
+            let single = if single.next.is_none() {
+                let sels = next_item(
+                    state.client.clone(),
+                    next_item::Vars {
+                        viewer_end_input: next_item::vars::ViewerEndInput {
+                            product_id: single_id,
+                            series_id: series_id,
+                        },
+                    },
+                )
+                .await?;
+                state
+                    .get_srs(series_id)?
+                    .single_map
+                    .get_mut(&single_id)
+                    .unwrap()
+                    .next = Some(sels.viewer_end.next_item.product_id);
+                Single {
+                    title: single.title,
+                    viewer: single.viewer,
+                    prev: single.prev,
+                    next: Some(sels.viewer_end.next_item.product_id),
+                }
+            } else {
+                single
+            };
             Ok(Json(SingleRes { meta: single }))
         } else {
             if free {
                 return get_single(&state, state.client.clone(), series_id, single_id).await;
             }
             for i in 0..2 {
-                if wait_free {
-                    let wait_frees = state
-                        .get_srs(series_id)?
-                        .ticket_map
-                        .iter_mut()
-                        .filter_map(|e| {
-                            if now() > e.wait_free && e.wait_free > 0 {
-                                Some(*e.key())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<Vec<i64>>();
-                    for account_id in wait_frees {
-                        if use_ticket(&state, account_id, series_id, single_id, "RentWaitFree")
-                            .await
-                            .is_ok()
-                        {
-                            return get_single(
-                                &state,
-                                state.get_acc(account_id)?.client(),
-                                series_id,
-                                single_id,
-                            )
-                            .await;
+                let wait_frees = state
+                    .get_srs(series_id)?
+                    .ticket_map
+                    .iter_mut()
+                    .filter_map(|e| {
+                        if now() > e.wait_free && e.wait_free > 0 {
+                            Some(*e.key())
+                        } else {
+                            None
                         }
+                    })
+                    .collect::<Vec<i64>>();
+                for account_id in wait_frees {
+                    if use_ticket(&state, account_id, series_id, single_id, "RentWaitFree")
+                        .await
+                        .is_ok()
+                    {
+                        return get_single(
+                            &state,
+                            state.get_acc(account_id)?.client(),
+                            series_id,
+                            single_id,
+                        )
+                        .await;
                     }
                 }
                 let mut updated = HashSet::new();

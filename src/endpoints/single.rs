@@ -297,7 +297,7 @@ macroql! {
         }
     ) {
         viewerEnd(viewerEndInput) {
-            nextItem {
+            nextItem: ? {
                 productId: Long
             }
         }
@@ -331,17 +331,21 @@ pub async fn single(
                     },
                 )
                 .await?;
-                state
-                    .get_srs(series_id)?
-                    .single_map
-                    .get_mut(&single_id)
-                    .unwrap()
-                    .next = Some(sels.viewer_end.next_item.product_id);
-                Single {
-                    title: single.title,
-                    viewer: single.viewer,
-                    prev: single.prev,
-                    next: Some(sels.viewer_end.next_item.product_id),
+                if let Some(next) = sels.viewer_end.next_item {
+                    state
+                        .get_srs(series_id)?
+                        .single_map
+                        .get_mut(&single_id)
+                        .unwrap()
+                        .next = Some(next.product_id);
+                    Single {
+                        title: single.title,
+                        viewer: single.viewer,
+                        prev: single.prev,
+                        next: Some(next.product_id),
+                    }
+                } else {
+                    single
                 }
             } else {
                 single

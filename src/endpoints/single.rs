@@ -264,7 +264,7 @@ async fn finder_job(
                     };
                     let permanent = sels.content_my_ticket.ticket_rental_count
                         + sels.content_my_ticket.ticket_own_count
-                        - if now() > wait_free { 1 } else { 0 };
+                        - if now() >= wait_free { 1 } else { 0 };
                     if permanent > 0 {
                         find_tx.send(true)?;
                     }
@@ -361,7 +361,7 @@ pub async fn single(
                     .ticket_map
                     .iter_mut()
                     .filter_map(|e| {
-                        if now() > e.wait_free && e.wait_free > 0 {
+                        if now() > e.wait_free {
                             Some(*e.key())
                         } else {
                             None
@@ -454,7 +454,7 @@ pub async fn single(
                     let mut ticket = series.get_tkt(account_id)?;
                     ticket.permanent = sels.content_my_ticket.ticket_rental_count
                         + sels.content_my_ticket.ticket_own_count
-                        - if now() > wait_free { 1 } else { 0 };
+                        - if now() >= wait_free { 1 } else { 0 };
                     ticket.wait_free = wait_free;
                     drop(ticket);
                     drop(series);
